@@ -333,6 +333,7 @@ bool NixRepl::processLine(string line)
              << "  <x> = <expr>  Bind expression to variable\n"
              << "  :a <expr>     Add attributes from resulting set to scope\n"
              << "  :b <expr>     Build derivation\n"
+             << "  :h <func>     Print the help text for a function, if present \n"
              << "  :i <expr>     Build derivation, then install result into current profile\n"
              << "  :l <path>     Load Nix expression and add it to scope\n"
              << "  :p <expr>     Evaluate and print expression recursively\n"
@@ -400,6 +401,68 @@ bool NixRepl::processLine(string line)
         Value v;
         evalString(arg, v);
         printValue(std::cout, v, 1000000000) << std::endl;
+    }
+
+    else if (command == ":h") {
+        Value v;
+        evalString(arg, v);
+
+        std::cout.flush();
+        checkInterrupt();
+
+        state.forceValue(v);
+
+        //1: check if it's an attr set
+        if (v.type != tAttrs) {
+          std::cerr << "This only works on functions described with lib.documentedFunction" << std::endl;
+          return false;
+        };
+
+        //2: check if it's a __type == DocumentedFunction
+        {
+          auto type_symbol = state.symbols.create("_type");
+          Bindings::iterator i = v.attrs->find(type_symbol);
+          PathSet context;
+
+          if (i == v.attrs->end()) {
+            //blah
+            std::cout <<" NOOOEOOEOOEEOEOEO!" << endl;
+            return true;
+          }
+
+          if (i->value->type != tString) {
+            std::cerr << "not a string" << endl;
+            return true;
+          }
+
+          const char *s = i->value->string.s;
+
+          if (strcmp(s,"documentedFunction") != 0) {
+            std::cerr << "NOT DOCUMENTED FUNC" << " (" << s << ")" << endl;
+            return true;
+          }
+        }
+
+        // CALL _HELP
+        auto type_symbol = state.symbols.create("_help");
+        Bindings::iterator i = v.attrs->find(type_symbol);
+        PathSet context;
+
+        if (i == v.attrs->end()) {
+          std::cout <<"No _help attr. Can't display help." << endl;
+          return true;
+        }
+
+        auto result = state.forceStringNoCtx(*i->value);
+
+        if (i->value->type != tString) {
+          std::cerr << "not reduced" << endl;
+          return true;
+        }
+
+        const char *s = i->value->string.s;
+        std::cout << s << endl;
+        return true;
     }
 
     else if (command == ":q" || command == ":quit")
